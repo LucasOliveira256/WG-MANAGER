@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WG Manager</title>
+<meta name="theme-color" content="#0a0e13">
+<link rel="icon" type="image/png" href="logo-icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<header class="top" id="topbar" hidden>
+  <div class="brand">
+    <img class="brand-icon" src="logo-icon.png" width="37" height="40" alt="EDGE">
+    <div>
+      <h1>WG Manager</h1>
+      <p class="muted" id="server-info"></p>
+    </div>
+  </div>
+  <button class="btn ghost" id="btn-logout" type="button">Sair</button>
+</header>
+
+<main>
+
+  <section class="view" id="view-loading">
+    <p class="muted">Carregando…</p>
+  </section>
+
+  <!-- Login -->
+  <section class="view" id="view-login" hidden>
+    <div class="login">
+      <img class="login-logo" src="logo.png" width="240" height="144" alt="EDGE">
+      <form class="card" id="form-login" autocomplete="off">
+        <h2 class="sr">Entrar</h2>
+        <p class="muted">Acesso restrito à equipe.</p>
+        <label>Senha
+          <input type="password" id="login-pw" required autocomplete="current-password">
+        </label>
+        <p class="msg error" id="login-err" role="alert"></p>
+        <button class="btn primary block" type="submit">Entrar</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Wizard -->
+  <section class="view" id="view-wizard" hidden>
+    <div class="wiz-head">
+      <img class="wiz-logo" src="logo.png" width="150" height="90" alt="EDGE">
+      <h2>Configuração inicial</h2>
+      <p id="wiz-progress"></p>
+    </div>
+
+    <div class="step" data-step="password" hidden>
+      <form class="card" id="form-password" autocomplete="off">
+        <h3>Senha da página</h3>
+        <p class="muted">Esta senha protege o acesso ao painel. Mínimo de 8 caracteres.</p>
+        <label>Nova senha
+          <input type="password" id="pw1" required minlength="8" maxlength="72" autocomplete="new-password">
+        </label>
+        <label>Repita a senha
+          <input type="password" id="pw2" required minlength="8" maxlength="72" autocomplete="new-password">
+        </label>
+        <p class="msg error" id="pw-err" role="alert"></p>
+        <button class="btn primary" type="submit">Salvar e continuar</button>
+      </form>
+    </div>
+
+    <div class="step" data-step="ros" hidden>
+      <form class="card" id="form-ros" autocomplete="off">
+        <h3>Conexão com a RouterBoard</h3>
+        <p class="muted">Use o usuário dedicado com permissão mínima criado para a REST API.</p>
+        <label class="check"><input type="checkbox" id="ros-https" checked> Usar HTTPS (serviço www-ssl)</label>
+        <div class="row">
+          <label class="grow">Host
+            <input type="text" id="ros-host" value="10.133.133.1" required>
+          </label>
+          <label class="port">Porta
+            <input type="number" id="ros-port" value="443" min="1" max="65535" required>
+          </label>
+        </div>
+        <label>Usuário
+          <input type="text" id="ros-user" required autocomplete="off">
+        </label>
+        <label>Senha
+          <input type="password" id="ros-pass" required autocomplete="new-password">
+        </label>
+        <label class="check"><input type="checkbox" id="ros-verify"> Verificar o certificado TLS</label>
+        <p class="msg" id="ros-msg" role="status"></p>
+        <div class="actions">
+          <button class="btn" id="ros-test" type="button">Testar conexão</button>
+          <button class="btn primary" id="ros-next" type="submit" disabled>Continuar</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="step" data-step="wg" hidden>
+      <form class="card" id="form-wg" autocomplete="off">
+        <h3>Servidor WireGuard</h3>
+        <fieldset>
+          <legend>Interface</legend>
+          <label class="check"><input type="radio" name="wg-mode" value="create" checked> Criar uma interface nova</label>
+          <label class="check"><input type="radio" name="wg-mode" value="adopt"> Adotar uma interface existente</label>
+        </fieldset>
+        <div class="row">
+          <label class="grow" id="wg-iface-field">Nome da interface
+            <input type="text" id="wg-iface" value="wg0" maxlength="15">
+          </label>
+          <label class="grow" id="wg-iface-select-field" hidden>Interface existente
+            <select id="wg-iface-select"></select>
+          </label>
+          <label class="port" id="wg-port-field">Listen-port
+            <input type="number" id="wg-port" value="13231" min="1" max="65535">
+          </label>
+        </div>
+        <div class="row">
+          <label class="grow">Sub-rede privada
+            <input type="text" id="wg-subnet" value="10.8.0.0/24" required>
+          </label>
+          <label class="grow">IP do servidor
+            <input type="text" id="wg-serverip" value="10.8.0.1" required>
+          </label>
+        </div>
+        <label>Endpoint público (IP ou DDNS, sem porta)
+          <input type="text" id="wg-endpoint" required placeholder="vpn.exemplo.com">
+        </label>
+        <label>DNS dos clientes (separe por vírgula)
+          <input type="text" id="wg-dns" value="1.1.1.1">
+        </label>
+        <label>AllowedIPs padrão dos clientes
+          <input type="text" id="wg-allowed" value="0.0.0.0/0" required>
+        </label>
+        <p class="msg error" id="wg-msg" role="alert"></p>
+        <button class="btn primary" type="submit">Configurar servidor</button>
+      </form>
+    </div>
+
+    <div class="step" data-step="done" hidden>
+      <div class="card">
+        <h3>Servidor configurado</h3>
+        <p>Faltam duas regras na RouterBoard: liberar a porta UDP do WireGuard e fazer NAT dos peers para que naveguem pela VPN (a segunda só é necessária se os clientes usarem a VPN para acessar a internet). O sistema não altera o firewall. Cole os comandos no terminal da RB. Se a sua saída para a internet for específica, acrescente <code>out-interface=</code> na regra de NAT.</p>
+        <pre class="code" id="fw-rule"></pre>
+        <div class="actions">
+          <button class="btn" id="fw-copy" type="button">Copiar comandos</button>
+          <button class="btn primary" id="go-main" type="button">Abrir o painel</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Painel -->
+  <section class="view" id="view-main" hidden>
+    <form class="card" id="form-peer" autocomplete="off">
+      <h2>Novo peer</h2>
+      <div class="row">
+        <label class="grow">Nome
+          <input type="text" id="peer-name" required maxlength="64" placeholder="notebook-maria">
+        </label>
+        <label class="grow">IP privado (opcional)
+          <input type="text" id="peer-ip" placeholder="automático">
+        </label>
+        <label class="port">Keepalive (s)
+          <input type="number" id="peer-keepalive" value="25" min="0" max="65535">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="peer-psk" checked> Gerar preshared key</label>
+      <p class="msg error" id="peer-msg" role="alert"></p>
+      <button class="btn primary" type="submit">Criar peer</button>
+    </form>
+
+    <div class="card result" id="result" hidden>
+      <h2>Arquivo de configuração</h2>
+      <p class="warn">A chave privada aparece só agora. O servidor não a guarda: copie ou baixe antes de fechar.</p>
+      <textarea id="conf-text" readonly rows="14" spellcheck="false"></textarea>
+      <div class="actions">
+        <button class="btn" id="conf-copy" type="button">Copiar texto</button>
+        <button class="btn" id="conf-download" type="button">Baixar .conf</button>
+        <button class="btn ghost" id="conf-close" type="button">Fechar</button>
+      </div>
+    </div>
+
+    <div class="listhead">
+      <h2>Peers</h2>
+      <button class="btn ghost" id="btn-refresh" type="button">Atualizar</button>
+    </div>
+    <p class="msg error" id="list-msg" role="alert"></p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Nome</th>
+            <th scope="col">IP</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Último handshake</th>
+            <th scope="col" class="num">Recebido</th>
+            <th scope="col" class="num">Enviado</th>
+            <th scope="col"><span class="sr">Ações</span></th>
+          </tr>
+        </thead>
+        <tbody id="peers-body"></tbody>
+      </table>
+    </div>
+    <p class="muted" id="peers-empty" hidden>Nenhum peer ainda. Crie o primeiro no formulário acima.</p>
+  </section>
+
+</main>
+<script src="app.js"></script>
+</body>
+</html>
