@@ -216,6 +216,19 @@ func collectUsage(peers, addrs []Obj, server netip.Addr) *usage {
 	return u
 }
 
+// peerHostIP devolve o IP do peer quando o allowed-address é exatamente um host /32 da sub-rede.
+func peerHostIP(allowed string, sub netip.Prefix) (netip.Addr, bool) {
+	parts := strings.Split(allowed, ",")
+	if len(parts) != 1 {
+		return netip.Addr{}, false
+	}
+	p, err := netip.ParsePrefix(strings.TrimSpace(parts[0]))
+	if err != nil || !p.Addr().Is4() || p.Bits() != 32 || !sub.Contains(p.Addr()) {
+		return netip.Addr{}, false
+	}
+	return p.Addr(), true
+}
+
 // nextFree devolve o primeiro IP livre entre o endereço de rede e o de broadcast.
 func nextFree(sub netip.Prefix, u *usage) (netip.Addr, bool) {
 	bc := broadcast(sub)

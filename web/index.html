@@ -204,6 +204,21 @@
   </section>
 
 </main>
+
+<dialog class="dialog" id="peer-dialog" aria-labelledby="pd-title">
+  <h2 id="pd-title"></h2>
+  <dl class="meta" id="pd-meta"></dl>
+  <p class="warn">O servidor não guarda a chave privada dos peers, então o arquivo original não pode ser recuperado. Gerar um novo .conf cria um novo par de chaves e uma nova preshared key e as grava na RouterBoard: o equipamento que usa a configuração atual deixa de conectar até importar o arquivo novo.</p>
+  <label>Keepalive (s)
+    <input type="number" id="pd-keepalive" value="25" min="0" max="65535">
+  </label>
+  <p class="msg error" id="pd-msg" role="alert"></p>
+  <div class="actions">
+    <button class="btn primary" id="pd-reissue" type="button">Gerar novo .conf</button>
+    <button class="btn ghost" id="pd-close" type="button">Fechar</button>
+  </div>
+</dialog>
+
 <script src="app.js"></script>
 </body>
 </html>

@@ -47,6 +47,7 @@ func (a *App) Routes(static fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/setup/wg", a.guard(true, a.handleWgSetup))
 	mux.HandleFunc("GET /api/peers", a.guard(true, a.handlePeers))
 	mux.HandleFunc("POST /api/peers", a.guard(true, a.handlePeerCreate))
+	mux.HandleFunc("POST /api/peers/{id}/reissue", a.guard(true, a.handlePeerReissue))
 	mux.HandleFunc("POST /api/peers/{id}/toggle", a.guard(true, a.handlePeerToggle))
 	mux.HandleFunc("POST /api/peers/{id}/delete", a.guard(true, a.handlePeerDelete))
 	mux.Handle("GET /", http.FileServer(http.FS(static)))
@@ -74,7 +75,7 @@ func writeRosErr(w http.ResponseWriter, err error) {
 	}
 	msg := err.Error()
 	if strings.Contains(msg, "not allowed") {
-		msg += " (confira as policies do grupo do usuário: read, write, rest-api e sensitive)"
+		msg += " (confira as policies do grupo do usuário: read, write, rest-api, sensitive e api)"
 	}
 	writeErr(w, http.StatusBadGateway, msg)
 }
@@ -716,27 +717,32 @@ func (a *App) handlePeerCreate(w http.ResponseWriter, r *http.Request, _ session
 	writeJSON(w, http.StatusCreated, M{"conf": conf, "filename": safeFilename(name) + ".conf", "address": ip.String()})
 }
 
-// ownedPeer valida o id e garante que o peer pertence à interface gerenciada.
-func (a *App) ownedPeer(w http.ResponseWriter, r *http.Request) (string, *Ros, bool) {
+// ownedPeerObj valida o id e garante que o peer pertence à interface gerenciada.
+func (a *App) ownedPeerObj(w http.ResponseWriter, r *http.Request) (Config, *Ros, string, Obj, bool) {
 	cfg, ros, ok := a.readyConfig(w)
 	if !ok {
-		return "", nil, false
+		return Config{}, nil, "", nil, false
 	}
 	id := r.PathValue("id")
 	if !idRe.MatchString(id) {
 		writeErr(w, http.StatusBadRequest, "ID de peer inválido.")
-		return "", nil, false
+		return Config{}, nil, "", nil, false
 	}
 	p, err := ros.Peer(id)
 	if err != nil {
 		writeRosErr(w, err)
-		return "", nil, false
+		return Config{}, nil, "", nil, false
 	}
 	if p.S("interface") != cfg.Wg.Iface {
 		writeErr(w, http.StatusNotFound, "Peer não encontrado.")
-		return "", nil, false
+		return Config{}, nil, "", nil, false
 	}
-	return id, ros, true
+	return cfg, ros, id, p, true
+}
+
+func (a *App) ownedPeer(w http.ResponseWriter, r *http.Request) (string, *Ros, bool) {
+	_, ros, id, _, ok := a.ownedPeerObj(w, r)
+	return id, ros, ok
 }
 
 func (a *App) handlePeerToggle(w http.ResponseWriter, r *http.Request, _ session) {
@@ -767,4 +773,74 @@ func (a *App) handlePeerDelete(w http.ResponseWriter, r *http.Request, _ session
 		return
 	}
 	writeJSON(w, http.StatusOK, M{"ok": true})
+}
+
+// handlePeerReissue gera um .conf novo para um peer existente. O servidor não guarda a chave
+// privada de ninguém, então o arquivo original não pode ser recuperado: o peer ganha um novo
+// par de chaves e uma nova preshared key, gravados na RB, e o .conf novo aparece uma única vez.
+func (a *App) handlePeerReissue(w http.ResponseWriter, r *http.Request, _ session) {
+	var in struct {
+		Keepalive int `json:"keepalive"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Keepalive < 0 || in.Keepalive > 65535 {
+		writeErr(w, http.StatusBadRequest, "Keepalive deve estar entre 0 e 65535 segundos.")
+		return
+	}
+
+	a.peerMu.Lock()
+	defer a.peerMu.Unlock()
+
+	cfg, ros, id, peer, ok := a.ownedPeerObj(w, r)
+	if !ok {
+		return
+	}
+	sub, err := parseSubnet(cfg.Wg.Subnet)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Sub-rede salva é inválida.")
+		return
+	}
+	ip, ok := peerHostIP(peer.S("allowed-address"), sub)
+	if !ok {
+		writeErr(w, http.StatusConflict, "Este peer não tem um único IP /32 da sub-rede do servidor; não é possível gerar o .conf automaticamente.")
+		return
+	}
+
+	ifs, err := ros.Interfaces()
+	if err != nil {
+		writeRosErr(w, err)
+		return
+	}
+	serverPub := ""
+	for _, o := range ifs {
+		if o.S("name") == cfg.Wg.Iface {
+			serverPub = o.S("public-key")
+		}
+	}
+	if serverPub == "" {
+		writeErr(w, http.StatusBadGateway, "Não foi possível ler a public-key da interface "+cfg.Wg.Iface+" na RouterBoard.")
+		return
+	}
+
+	priv, pub, err := genKeypair()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Falha ao gerar as chaves.")
+		return
+	}
+	psk, err := genPSK()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "Falha ao gerar a preshared key.")
+		return
+	}
+	// Só devolve o arquivo se a RB aceitou as chaves novas.
+	if err := ros.UpdatePeer(id, Obj{"public-key": pub, "preshared-key": psk}); err != nil {
+		writeRosErr(w, err)
+		return
+	}
+
+	conf := buildConf(priv, ip.String(), sub.Bits(), cfg.Wg.DNS, serverPub, psk,
+		cfg.Wg.Endpoint, cfg.Wg.ListenPort, cfg.Wg.AllowedIPs, in.Keepalive)
+	writeJSON(w, http.StatusOK, M{"conf": conf, "filename": safeFilename(peer.S("comment")) + ".conf", "address": ip.String()})
 }

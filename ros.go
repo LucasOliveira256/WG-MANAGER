@@ -190,6 +190,13 @@ func (r *Ros) SetPeerDisabled(id string, disabled bool) error {
 	return r.do(http.MethodPatch, "interface/wireguard/peers/"+id, Obj{"disabled": v}, nil)
 }
 
+func (r *Ros) UpdatePeer(id string, body Obj) error {
+	if !idRe.MatchString(id) {
+		return errBadID
+	}
+	return r.do(http.MethodPatch, "interface/wireguard/peers/"+id, body, nil)
+}
+
 func (r *Ros) DeletePeer(id string) error {
 	if !idRe.MatchString(id) {
 		return errBadID

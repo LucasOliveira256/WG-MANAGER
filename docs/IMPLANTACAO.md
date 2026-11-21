@@ -59,11 +59,13 @@ Para HTTPS, use `www-ssl` (porta 443, certificado autoassinado) e marque "Usar H
 **Usuário dedicado:**
 
 ```routeros
-/user group add name=wgm-api policy=read,write,rest-api,sensitive
+/user group add name=wgm-api policy=read,write,rest-api,sensitive,api
 /user add name=wgm group=wgm-api address=10.133.133.2/32 password="DEFINA-UMA-SENHA-FORTE"
 ```
 
-A policy `sensitive` é necessária para a REST API ler `/interface/wireguard`. Ela permite ler chaves e senhas na RB, por isso use senha forte e mantenha o `address=` restrito ao container.
+A REST API exige `sensitive` para ler `/interface/wireguard`, e no RouterOS 7.24 também exigiu `api` (testado em RB4011; em uma RB com versão anterior `read,write,rest-api,sensitive` bastou). A `sensitive` permite ler chaves e senhas na RB, por isso use senha forte e mantenha o `address=` restrito ao container. A policy `api` só dá ao usuário o direito de usar APIs; o serviço `api` do RouterOS (porta 8728) é separado e pode continuar desabilitado.
+
+Se o teste de conexão do wizard falhar com `not allowed (9)`, o grupo está sem alguma policy. Para diagnosticar, mova o usuário para o grupo `full` apenas durante o teste e depois volte para `wgm-api` (`/user set wgm group=wgm-api`).
 
 **Rede do container:**
 
@@ -109,10 +111,30 @@ O NAT dos peers é necessário para os clientes navegarem pela VPN (AllowedIPs c
 
 Se quiser, restrinja com `out-interface=` ou `out-interface-list=` da sua WAN.
 
+## Esqueci a senha do painel
+
+O sistema não tem recuperação de senha. O caminho é apagar o `config.json` do volume e refazer o wizard. Os peers e a interface WireGuard ficam na RB; só a configuração do painel é recriada.
+
+1. Opcional: baixe `wgm-data/config.json` (WinBox, Files) para consultar sub-rede, IP do servidor, endpoint, DNS e AllowedIPs, que o wizard pedirá de novo. O arquivo contém a senha da RB em texto puro; apague a cópia depois.
+
+2. Pare o container, apague o arquivo e inicie de novo. O painel só lê o arquivo na partida.
+
+```routeros
+/container stop wg-manager
+/file remove [find where name="wgm-data/config.json"]
+/container start wg-manager
+```
+
+Se o comando falhar, apague o arquivo pelo WinBox, em Files.
+
+3. Refaça o wizard em `http://10.133.133.2:5555`: defina a nova senha, informe de novo os dados da RB (se não lembra a senha do usuário `wgm`, use `/user set wgm password="NOVA-SENHA"`) e, no passo do servidor, escolha **Adotar uma interface existente** com os mesmos valores de antes. Não use "Criar uma interface nova": o nome já existe e o sistema recusa.
+
+Os peers voltam a aparecer na lista e os clientes continuam conectados durante o processo. Enquanto o primeiro passo do wizard não termina, quem alcançar o painel define a senha: faça isso logo, com o painel acessível só pela LAN.
+
 ## Segurança
 
 - A senha da RB fica em `/data/config.json` (0600), pois o sistema precisa dela para chamar a API.
 - Chaves privadas dos peers nunca são gravadas nem registradas em log: aparecem uma única vez, na criação.
 - Login por cookie HttpOnly/SameSite=Strict, token CSRF em todo POST e limite de tentativas por IP. As sessões ficam em memória e são perdidas ao reiniciar o container.
 - O painel usa HTTP simples na LAN. O sistema não altera o firewall: os comandos são apenas exibidos.
-- Para refazer o wizard, apague `config.json` do volume.
+- Para refazer o wizard ou redefinir a senha do painel, veja "Esqueci a senha do painel".

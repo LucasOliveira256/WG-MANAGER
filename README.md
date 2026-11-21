@@ -23,6 +23,7 @@ Criar um peer WireGuard no RouterOS à mão exige gerar chaves no cliente, escol
 - **Criação de peers:** par de chaves Curve25519 gerado no backend, preshared key opcional, IP automático (próximo livre) ou manual validado contra os peers, os endereços da RB e a sub-rede.
 - **Arquivo `.conf`:** download e cópia do texto. A chave privada aparece uma única vez e nunca é gravada no servidor.
 - **Lista de peers:** nome, IP, estado, último handshake e tráfego, com ações de ativar, desativar e remover.
+- **Novo `.conf` para um peer existente:** clique no peer e gere um arquivo novo quando o cliente perder a configuração, trocar de equipamento ou formatar. O sistema troca o par de chaves e a preshared key do peer na RB (veja Limitações).
 - **Acesso protegido:** senha única com hash bcrypt, cookie `HttpOnly` e `SameSite=Strict`, token CSRF em todo POST e limite de tentativas de login por IP.
 
 ## Como funciona
@@ -49,7 +50,7 @@ O WG Manager não guarda peers. A fonte da verdade é a RouterBoard: cada ação
 ## Requisitos
 
 - RouterBoard com RouterOS v7 (container exige 7.6 ou superior), pacote `container` instalado e modo container habilitado.
-- Um usuário dedicado na RB para a REST API. O grupo precisa das policies `read`, `write`, `rest-api` e `sensitive`.
+- Um usuário dedicado na RB para a REST API. O grupo precisa das policies `read`, `write`, `rest-api`, `sensitive` e `api`.
 - No PC de build: Docker com buildx e, para as fontes do tema, Python 3. O Go não precisa estar instalado (a compilação roda dentro da imagem).
 
 ## Início rápido
@@ -114,7 +115,8 @@ Estrutura:
 
 ## Limitações
 
+- O `.conf` original não pode ser baixado de novo, porque as chaves privadas dos peers não ficam no servidor. Para um peer existente, o sistema gera um **novo** par de chaves e uma nova preshared key, grava na RB e mostra o arquivo uma única vez. O equipamento que usa a configuração antiga deixa de conectar até importar o novo arquivo. Só vale para peers com um único IP /32 da sub-rede do servidor.
 - Senha única, sem usuários separados.
 - Não há QR code para os clientes móveis.
-- Não há reconfiguração depois do wizard: para refazê-lo, apague `config.json` do volume.
+- Não há reconfiguração depois do wizard nem recuperação de senha: para refazê-lo ou redefinir a senha, apague `config.json` do volume (passo a passo em [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md#esqueci-a-senha-do-painel)).
 - Gerencia os peers de uma interface WireGuard por instalação.

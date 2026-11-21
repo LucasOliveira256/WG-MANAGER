@@ -336,8 +336,16 @@
     peers.forEach((p) => {
       const st = statusOf(p);
       const tr = document.createElement('tr');
-      tr.className = 'st-' + st.key;
-      tr.appendChild(cell(p.name || '(sem nome)'));
+      tr.className = 'clickable st-' + st.key;
+      const nameTd = document.createElement('td');
+      const nameBtn = document.createElement('button');
+      nameBtn.type = 'button';
+      nameBtn.className = 'peer-link';
+      nameBtn.textContent = p.name || '(sem nome)';
+      nameBtn.addEventListener('click', () => openPeer(p));
+      nameTd.appendChild(nameBtn);
+      tr.appendChild(nameTd);
+      tr.addEventListener('click', (e) => { if (!e.target.closest('button')) openPeer(p); });
       tr.appendChild(cell(p.address, 'mono'));
       const stTd = document.createElement('td');
       const tag = document.createElement('span');
@@ -369,6 +377,61 @@
     });
   }
 
+  function showResult(r) {
+    lastConf = r;
+    $('#conf-text').value = r.conf;
+    $('#result').hidden = false;
+    $('#result').scrollIntoView({ block: 'nearest' });
+  }
+
+  // Detalhes do peer e geração de um .conf novo
+  let currentPeer = null;
+
+  function openPeer(p) {
+    currentPeer = p;
+    $('#pd-title').textContent = p.name || '(sem nome)';
+    const meta = $('#pd-meta');
+    meta.textContent = '';
+    const rows = [
+      ['IP', p.address],
+      ['Estado', statusOf(p).label],
+      ['Último handshake', p.lastHandshake ? 'há ' + p.lastHandshake : 'nunca'],
+      ['Chave pública', p.publicKey],
+    ];
+    rows.forEach((row) => {
+      const dt = document.createElement('dt');
+      dt.textContent = row[0];
+      const dd = document.createElement('dd');
+      dd.textContent = row[1] || '-';
+      meta.appendChild(dt);
+      meta.appendChild(dd);
+    });
+    setMsg($('#pd-msg'), '', 'error');
+    const dlg = $('#peer-dialog');
+    if (!dlg.open) dlg.showModal();
+  }
+
+  $('#pd-close').addEventListener('click', () => $('#peer-dialog').close());
+
+  $('#pd-reissue').addEventListener('click', async (e) => {
+    if (!currentPeer) return;
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const r = await api('/api/peers/' + encodeURIComponent(currentPeer.id) + '/reissue', {
+        keepalive: Number($('#pd-keepalive').value) || 0,
+      });
+      $('#peer-dialog').close();
+      currentPeer = null;
+      showResult(r);
+      loadPeers();
+    } catch (ex) {
+      setMsg($('#pd-msg'), ex.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   $('#btn-refresh').addEventListener('click', loadPeers);
 
   $('#form-peer').addEventListener('submit', async (e) => {
@@ -384,10 +447,7 @@
         keepalive: Number($('#peer-keepalive').value) || 0,
         psk: $('#peer-psk').checked,
       });
-      lastConf = r;
-      $('#conf-text').value = r.conf;
-      $('#result').hidden = false;
-      $('#result').scrollIntoView({ block: 'nearest' });
+      showResult(r);
       $('#peer-name').value = '';
       $('#peer-ip').value = '';
       loadPeers();
